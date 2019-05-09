@@ -1,0 +1,10 @@
+{
+    "Websites": [
+        {
+            "URL": "https://bing.com",
+            "Identifier": "bing"
+        }
+    ],
+    "Interval": 30,
+    "Timeout": 5
+}
