@@ -8,7 +8,7 @@
 Create a ``config.json`` accordingly and then
 
 ```
-$ docker run -it --rm -v $(pwd)/config.json:/app/config.json -p 8080:8080 w1ndy/go-website-badge
+$ docker run -it --rm -v $(pwd)/config.json:/app/config.json -p 8080:8080 skies457/go-website-badge
 ```
 
 Visit http://localhost:8080/{Identifier} (e.g., http://localhost:8080/bing) for badges. These badges are generated with [shields.io](https://shields.io).
