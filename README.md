@@ -1,7 +1,7 @@
 # go-website-badge
 > Generates status badges for websites
 
-![](https://img.shields.io/badge/status-up-success.svg) ![](https://img.shields.io/badge/status-down-critical.svg)
+![](https://img.shields.io/badge/status-up-success.svg) ![](https://img.shields.io/badge/status-down-critical.svg) ![](https://img.shields.io/badge/last%20seen-n/a-blue.svg)
 
 ## Usage
 
