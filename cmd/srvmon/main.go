@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -14,9 +15,12 @@ import (
 
 // MonitorWebsite sets a website to monitor
 type MonitorWebsite struct {
-	URL        string     `json:"URL"`
-	Identifier string     `json:"Identifier"`
-	Logger     *log.Entry `json:"-"`
+	URL        string      `json:"URL"`
+	Identifier string      `json:"Identifier"`
+	Result     bool        `json:"-"`
+	LastSeen   time.Time   `json:"-"`
+	Logger     *log.Entry  `json:"-"`
+	Lock       *sync.Mutex `json:"-"`
 }
 
 // Configuration describes monitor settings including websites, interval (seconds), and timeout (seconds)
@@ -30,9 +34,6 @@ var config = &Configuration{
 	Interval: 30,
 	Timeout:  5,
 }
-
-var results map[string]bool
-var resultLocks map[string]*sync.Mutex
 
 func init() {
 	confPath := flag.String("conf", "config.json", "path to configuration")
@@ -52,12 +53,9 @@ func init() {
 		log.Panic(err)
 	}
 
-	results = make(map[string]bool)
-	resultLocks = make(map[string]*sync.Mutex)
-
 	for i, site := range config.Websites {
-		results[site.Identifier] = false
-		resultLocks[site.Identifier] = &sync.Mutex{}
+		config.Websites[i].Result = false
+		config.Websites[i].Lock = &sync.Mutex{}
 		config.Websites[i].Logger = log.WithFields(log.Fields{
 			"URL":        site.URL,
 			"Identifier": site.Identifier,
@@ -66,7 +64,7 @@ func init() {
 	}
 }
 
-func test(site MonitorWebsite) {
+func test(site *MonitorWebsite) {
 	site.Logger.Trace("testing connectivity...")
 	timeout := time.Duration(time.Duration(config.Timeout) * time.Second)
 	client := http.Client{
@@ -74,13 +72,15 @@ func test(site MonitorWebsite) {
 	}
 
 	resp, err := client.Get(site.URL)
-	resultLocks[site.Identifier].Lock()
+	site.Lock.Lock()
+	defer site.Lock.Unlock()
 	if err == nil && resp.StatusCode == 200 {
 		site.Logger.Trace("site is up")
-		if !results[site.Identifier] {
+		if !site.Result {
 			site.Logger.Info("site restored.")
 		}
-		results[site.Identifier] = true
+		site.Result = true
+		site.LastSeen = time.Now()
 	} else {
 		code := -1
 		if resp != nil {
@@ -90,21 +90,20 @@ func test(site MonitorWebsite) {
 			"err":  err,
 			"code": code,
 		}).Trace("site is down")
-		if results[site.Identifier] {
+		if site.Result {
 			site.Logger.WithFields(log.Fields{
 				"err":  err,
 				"code": code,
 			}).Info("site goes down!")
 		}
-		results[site.Identifier] = false
+		site.Result = false
 	}
-	resultLocks[site.Identifier].Unlock()
 }
 
 func testAllWebsitesPeriodically() {
 	for {
-		for _, site := range config.Websites {
-			go test(site)
+		for k := range config.Websites {
+			go test(&config.Websites[k])
 		}
 		time.Sleep(time.Duration(config.Interval) * time.Second)
 	}
@@ -122,14 +121,22 @@ func main() {
 	})
 
 	for k := range config.Websites {
-		id := config.Websites[k].Identifier
-		r.GET("/"+id, func(context *gin.Context) {
-			resultLocks[id].Lock()
-			defer resultLocks[id].Unlock()
-			if results[id] {
+		r.GET(fmt.Sprintf("/%s", config.Websites[k].Identifier), func(context *gin.Context) {
+			config.Websites[k].Lock.Lock()
+			defer config.Websites[k].Lock.Unlock()
+			if config.Websites[k].Result {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-up-success.svg")
 			} else {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-down-critical.svg")
+			}
+		})
+		r.GET(fmt.Sprintf("/%s-lastseen", config.Websites[k].Identifier), func(context *gin.Context) {
+			config.Websites[k].Lock.Lock()
+			defer config.Websites[k].Lock.Unlock()
+			if !config.Websites[k].LastSeen.IsZero() {
+				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/last%%20seen-%s-blue.svg", config.Websites[k].LastSeen.Format("2006-01-02 15:04:05")))
+			} else {
+				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/last%%20seen-down-blue.svg")
 			}
 		})
 	}
