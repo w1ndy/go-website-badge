@@ -53,14 +53,15 @@ func init() {
 		log.Panic(err)
 	}
 
-	for i, site := range config.Websites {
-		config.Websites[i].Result = false
-		config.Websites[i].Lock = &sync.Mutex{}
-		config.Websites[i].Logger = log.WithFields(log.Fields{
+	for i := range config.Websites {
+		site := &config.Websites[i]
+		site.Result = false
+		site.Lock = &sync.Mutex{}
+		site.Logger = log.WithFields(log.Fields{
 			"URL":        site.URL,
 			"Identifier": site.Identifier,
 		})
-		config.Websites[i].Logger.Info("monitor initialized")
+		site.Logger.Info("monitor initialized")
 	}
 }
 
@@ -121,20 +122,21 @@ func main() {
 	})
 
 	for k := range config.Websites {
-		r.GET(fmt.Sprintf("/%s", config.Websites[k].Identifier), func(context *gin.Context) {
-			config.Websites[k].Lock.Lock()
-			defer config.Websites[k].Lock.Unlock()
-			if config.Websites[k].Result {
+		site := &config.Websites[k]
+		r.GET(fmt.Sprintf("/%s", site.Identifier), func(context *gin.Context) {
+			site.Lock.Lock()
+			defer site.Lock.Unlock()
+			if site.Result {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-up-success.svg")
 			} else {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-down-critical.svg")
 			}
 		})
-		r.GET(fmt.Sprintf("/%s-lastseen", config.Websites[k].Identifier), func(context *gin.Context) {
-			config.Websites[k].Lock.Lock()
-			defer config.Websites[k].Lock.Unlock()
-			if !config.Websites[k].LastSeen.IsZero() {
-				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/last seen-%s-blue.svg", config.Websites[k].LastSeen.Format("2006--01--02 15:04:05")))
+		r.GET(fmt.Sprintf("/%s-lastseen", site.Identifier), func(context *gin.Context) {
+			site.Lock.Lock()
+			defer site.Lock.Unlock()
+			if !site.LastSeen.IsZero() {
+				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/last seen-%s-blue.svg", site.LastSeen.Format("2006--01--02 15:04:05")))
 			} else {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/last seen-n/a-blue.svg")
 			}
