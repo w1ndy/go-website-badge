@@ -134,9 +134,9 @@ func main() {
 			config.Websites[k].Lock.Lock()
 			defer config.Websites[k].Lock.Unlock()
 			if !config.Websites[k].LastSeen.IsZero() {
-				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/last%%20seen-%s-blue.svg", config.Websites[k].LastSeen.Format("2006-01-02 15:04:05")))
+				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/last seen-%s-blue.svg", config.Websites[k].LastSeen.Format("2006--01--02 15:04:05")))
 			} else {
-				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/last%%20seen-down-blue.svg")
+				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/last seen-n/a-blue.svg")
 			}
 		})
 	}
