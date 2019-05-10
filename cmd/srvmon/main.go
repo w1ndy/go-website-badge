@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/proxy"
 )
 
 // MonitorWebsite sets a website to monitor
@@ -23,6 +25,7 @@ type MonitorWebsite struct {
 	Timeout            int64  `json:"Timeout"`
 	Interval           int64  `json:"Interval"`
 	Proxy              string `json:"Proxy"`
+	Mode               string `json:"Mode"`
 
 	Result   bool        `json:"-"`
 	LastSeen time.Time   `json:"-"`
@@ -65,6 +68,7 @@ func init() {
 		site.Result = false
 		site.Lock = &sync.Mutex{}
 		site.Logger = log.WithFields(log.Fields{
+			"Mode":       site.Mode,
 			"URL":        site.URL,
 			"Identifier": site.Identifier,
 		})
@@ -72,26 +76,73 @@ func init() {
 	}
 }
 
-func test(site *MonitorWebsite) {
-	var (
-		timeout time.Duration
-		proxy   func(*http.Request) (*url.URL, error)
-	)
+func parseProxyURL(proxyURL string, logger *log.Entry) *url.URL {
+	url, err := url.Parse(proxyURL)
+	if err != nil {
+		logger.WithFields(log.Fields{
+			"proxy": proxyURL,
+			"err":   err,
+		}).Panic("unable to parse proxy address as URL!")
+	}
+	return url
+}
 
-	if site.Timeout != 0 {
-		timeout = time.Duration(time.Duration(site.Timeout) * time.Second)
-	} else {
-		timeout = time.Duration(time.Duration(config.Timeout) * time.Second)
+func testTCP(site *MonitorWebsite, interval, timeout time.Duration) {
+	var d proxy.Dialer
+	d = &net.Dialer{
+		Timeout: timeout,
 	}
 
+	// TODO: this does not work as expected because with proxy.Dialer the dials always succeed
 	if site.Proxy != "" {
-		url, err := url.Parse(site.Proxy)
+		var err error
+		url := parseProxyURL(site.Proxy, site.Logger)
+		d, err = proxy.FromURL(url, d)
 		if err != nil {
 			site.Logger.WithFields(log.Fields{
 				"proxy": site.Proxy,
 				"err":   err,
 			}).Panic("unable to parse proxy address!")
 		}
+	}
+
+	for {
+		conn, err := d.Dial("tcp", site.URL)
+
+		site.Lock.Lock()
+
+		if err == nil {
+			site.Logger.Trace("site is up")
+			if !site.Result {
+				site.Logger.Info("site restored")
+			}
+
+			site.Result = true
+			site.LastSeen = time.Now()
+		} else {
+			loggerWithError := site.Logger.WithFields(log.Fields{
+				"err": err,
+			})
+
+			loggerWithError.Trace("site is down")
+			if site.Result {
+				loggerWithError.Info("site went down!")
+			}
+
+			site.Result = false
+		}
+
+		site.Lock.Unlock()
+		conn.Close()
+		time.Sleep(interval)
+	}
+}
+
+func testHTTP(site *MonitorWebsite, interval, timeout time.Duration) {
+	var proxy func(*http.Request) (*url.URL, error)
+
+	if site.Proxy != "" {
+		url := parseProxyURL(site.Proxy, site.Logger)
 		proxy = http.ProxyURL(url)
 	}
 
@@ -127,34 +178,44 @@ func test(site *MonitorWebsite) {
 				code = resp.StatusCode
 			}
 
-			site.Logger.WithFields(log.Fields{
+			loggerWithError := site.Logger.WithFields(log.Fields{
 				"err":  err,
 				"code": code,
-			}).Trace("site is down")
+			})
 
+			loggerWithError.Trace("site is down")
 			if site.Result {
-				site.Logger.WithFields(log.Fields{
-					"err":  err,
-					"code": code,
-				}).Info("site goes down!")
+				loggerWithError.Info("site went down!")
 			}
 
 			site.Result = false
 		}
 
 		site.Lock.Unlock()
-
-		if site.Interval != 0 {
-			time.Sleep(time.Duration(site.Interval) * time.Second)
-		} else {
-			time.Sleep(time.Duration(config.Interval) * time.Second)
-		}
+		time.Sleep(interval)
 	}
 }
 
 func main() {
 	for k := range config.Websites {
-		go test(&config.Websites[k])
+		var interval, timeout time.Duration
+
+		if config.Websites[k].Interval != 0 {
+			interval = time.Duration(time.Duration(config.Websites[k].Interval) * time.Second)
+		} else {
+			interval = time.Duration(time.Duration(config.Interval) * time.Second)
+		}
+		if config.Websites[k].Timeout != 0 {
+			timeout = time.Duration(time.Duration(config.Websites[k].Timeout) * time.Second)
+		} else {
+			timeout = time.Duration(time.Duration(config.Timeout) * time.Second)
+		}
+
+		if config.Websites[k].Mode == "TCP" {
+			go testTCP(&config.Websites[k], interval, timeout)
+		} else {
+			go testHTTP(&config.Websites[k], interval, timeout)
+		}
 	}
 
 	gin.SetMode(gin.ReleaseMode)

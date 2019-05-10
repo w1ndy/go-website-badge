@@ -15,6 +15,11 @@
             "URL": "https://google.com",
             "Identifier": "google-with-proxy",
             "Proxy": "socks5://127.0.0.1:1080"
+        },
+        {
+            "Mode": "TCP",
+            "URL": "bing.com:80",
+            "Identifier": "bing-80-tcp"
         }
     ],
     "Interval": 30,
