@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,12 +16,14 @@ import (
 
 // MonitorWebsite sets a website to monitor
 type MonitorWebsite struct {
-	URL        string      `json:"URL"`
-	Identifier string      `json:"Identifier"`
-	Result     bool        `json:"-"`
-	LastSeen   time.Time   `json:"-"`
-	Logger     *log.Entry  `json:"-"`
-	Lock       *sync.Mutex `json:"-"`
+	URL                string `json:"URL"`
+	Identifier         string `json:"Identifier"`
+	InsecureSkipVerify bool   `json:"InsecureSkipVerify"`
+
+	Result   bool        `json:"-"`
+	LastSeen time.Time   `json:"-"`
+	Logger   *log.Entry  `json:"-"`
+	Lock     *sync.Mutex `json:"-"`
 }
 
 // Configuration describes monitor settings including websites, interval (seconds), and timeout (seconds)
@@ -66,52 +69,62 @@ func init() {
 }
 
 func test(site *MonitorWebsite) {
-	site.Logger.Trace("testing connectivity...")
 	timeout := time.Duration(time.Duration(config.Timeout) * time.Second)
-	client := http.Client{
-		Timeout: timeout,
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: site.InsecureSkipVerify,
+		},
+	}
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: tr,
 	}
 
-	resp, err := client.Get(site.URL)
-	site.Lock.Lock()
-	defer site.Lock.Unlock()
-	if err == nil && resp.StatusCode == 200 {
-		site.Logger.Trace("site is up")
-		if !site.Result {
-			site.Logger.Info("site restored.")
-		}
-		site.Result = true
-		site.LastSeen = time.Now()
-	} else {
-		code := -1
-		if resp != nil {
-			code = resp.StatusCode
-		}
-		site.Logger.WithFields(log.Fields{
-			"err":  err,
-			"code": code,
-		}).Trace("site is down")
-		if site.Result {
+	for {
+		site.Logger.Trace("testing connectivity...")
+
+		resp, err := client.Get(site.URL)
+
+		site.Lock.Lock()
+
+		if err == nil && resp.StatusCode == 200 {
+			site.Logger.Trace("site is up")
+			if !site.Result {
+				site.Logger.Info("site restored.")
+			}
+
+			site.Result = true
+			site.LastSeen = time.Now()
+		} else {
+			code := -1
+			if resp != nil {
+				code = resp.StatusCode
+			}
+
 			site.Logger.WithFields(log.Fields{
 				"err":  err,
 				"code": code,
-			}).Info("site goes down!")
-		}
-		site.Result = false
-	}
-}
+			}).Trace("site is down")
 
-func testAllWebsitesPeriodically() {
-	for {
-		for k := range config.Websites {
-			go test(&config.Websites[k])
+			if site.Result {
+				site.Logger.WithFields(log.Fields{
+					"err":  err,
+					"code": code,
+				}).Info("site goes down!")
+			}
+
+			site.Result = false
 		}
+
+		site.Lock.Unlock()
 		time.Sleep(time.Duration(config.Interval) * time.Second)
 	}
 }
 
 func main() {
-	go testAllWebsitesPeriodically()
+	for k := range config.Websites {
+		go test(&config.Websites[k])
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -126,6 +139,7 @@ func main() {
 		r.GET(fmt.Sprintf("/%s", site.Identifier), func(context *gin.Context) {
 			site.Lock.Lock()
 			defer site.Lock.Unlock()
+
 			if site.Result {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-up-success.svg")
 			} else {

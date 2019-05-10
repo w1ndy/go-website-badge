@@ -3,6 +3,11 @@
         {
             "URL": "https://bing.com",
             "Identifier": "bing"
+        },
+        {
+            "URL": "https://expired.badssl.com",
+            "Identifier": "badssl",
+            "InsecureSkipVerify": true
         }
     ],
     "Interval": 30,
