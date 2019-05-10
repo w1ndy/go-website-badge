@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type MonitorWebsite struct {
 	InsecureSkipVerify bool   `json:"InsecureSkipVerify"`
 	Timeout            int64  `json:"Timeout"`
 	Interval           int64  `json:"Interval"`
+	Proxy              string `json:"Proxy"`
 
 	Result   bool        `json:"-"`
 	LastSeen time.Time   `json:"-"`
@@ -71,7 +73,10 @@ func init() {
 }
 
 func test(site *MonitorWebsite) {
-	var timeout time.Duration
+	var (
+		timeout time.Duration
+		proxy   func(*http.Request) (*url.URL, error)
+	)
 
 	if site.Timeout != 0 {
 		timeout = time.Duration(time.Duration(site.Timeout) * time.Second)
@@ -79,10 +84,22 @@ func test(site *MonitorWebsite) {
 		timeout = time.Duration(time.Duration(config.Timeout) * time.Second)
 	}
 
+	if site.Proxy != "" {
+		url, err := url.Parse(site.Proxy)
+		if err != nil {
+			site.Logger.WithFields(log.Fields{
+				"proxy": site.Proxy,
+				"err":   err,
+			}).Panic("unable to parse proxy address!")
+		}
+		proxy = http.ProxyURL(url)
+	}
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: site.InsecureSkipVerify,
 		},
+		Proxy: proxy,
 	}
 	client := &http.Client{
 		Timeout:   timeout,

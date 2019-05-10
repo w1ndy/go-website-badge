@@ -10,6 +10,11 @@
             "URL": "https://expired.badssl.com",
             "Identifier": "badssl",
             "InsecureSkipVerify": true
+        },
+        {
+            "URL": "https://google.com",
+            "Identifier": "google-with-proxy",
+            "Proxy": "socks5://127.0.0.1:1080"
         }
     ],
     "Interval": 30,
