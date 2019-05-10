@@ -15,4 +15,4 @@ Visit http://localhost:8080/{Identifier} and http://localhost:8080/{Identifier}-
 
 
 Licensed under [Anti 996](https://github.com/996icu/996.ICU/blob/master/LICENSE).
-Copyright (c) 2019 [Project Contributors](https://github.com/w1ndy/12306.ics/graphs/contributors).
+Copyright (c) 2019 [Project Contributors](https://github.com/w1ndy/go-website-badge/graphs/contributors).
