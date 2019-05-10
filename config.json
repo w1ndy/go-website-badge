@@ -1,25 +1,9 @@
 {
     "Websites": [
         {
-            "URL": "https://bing.com",
-            "Identifier": "bing",
-            "Timeout": 10,
-            "Interval": 10
-        },
-        {
-            "URL": "https://expired.badssl.com",
-            "Identifier": "badssl",
-            "InsecureSkipVerify": true
-        },
-        {
-            "URL": "https://google.com",
-            "Identifier": "google-with-proxy",
-            "Proxy": "socks5://127.0.0.1:1080"
-        },
-        {
-            "Mode": "TCP",
-            "URL": "bing.com:80",
-            "Identifier": "bing-80-tcp"
+            "Mode": "Passive",
+            "Identifier": "passive",
+            "Timeout": 10
         }
     ],
     "Interval": 30,

@@ -33,6 +33,7 @@ type MonitorWebsite struct {
 	LastSeen           time.Time   `json:"-"`
 	Logger             *log.Entry  `json:"-"`
 	Lock               *sync.Mutex `json:"-"`
+	Channel            chan bool   `json:"-"`
 }
 
 // Configuration describes monitor settings including websites, interval (seconds), and timeout (seconds)
@@ -202,6 +203,30 @@ func testHTTP(site *MonitorWebsite, interval, timeout time.Duration) {
 	}
 }
 
+func testPassive(site *MonitorWebsite, timeout time.Duration) {
+	for {
+		select {
+		case <-time.After(timeout):
+			site.Lock.Lock()
+			site.Logger.Trace("site is down")
+			if site.Result {
+				site.Logger.Info("site went down!")
+			}
+			site.Result = false
+		case <-site.Channel:
+			site.Lock.Lock()
+			site.Logger.Trace("site is up")
+			if !site.Result {
+				site.Logger.Info("site restored")
+			}
+			site.Result = true
+			site.ResultSuccessCount++
+		}
+		site.ResultCount++
+		site.Lock.Unlock()
+	}
+}
+
 func main() {
 	for k := range config.Websites {
 		var interval, timeout time.Duration
@@ -217,9 +242,15 @@ func main() {
 			timeout = time.Duration(time.Duration(config.Timeout) * time.Second)
 		}
 
-		if config.Websites[k].Mode == "TCP" {
+		switch config.Websites[k].Mode {
+		case "HTTP":
+			go testHTTP(&config.Websites[k], interval, timeout)
+		case "TCP":
 			go testTCP(&config.Websites[k], interval, timeout)
-		} else {
+		case "Passive":
+			config.Websites[k].Channel = make(chan bool)
+			go testPassive(&config.Websites[k], timeout)
+		default:
 			go testHTTP(&config.Websites[k], interval, timeout)
 		}
 	}
@@ -242,6 +273,14 @@ func main() {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-up-success.svg")
 			} else {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/status-down-critical.svg")
+			}
+		})
+		r.PUT(fmt.Sprintf("/%s", site.Identifier), func(context *gin.Context) {
+			if site.Mode != "Passive" {
+				context.JSON(http.StatusMethodNotAllowed, gin.H{"error": "mode is not passive"})
+			} else {
+				site.Channel <- true
+				context.JSON(http.StatusOK, gin.H{"status": "ok"})
 			}
 		})
 		r.GET(fmt.Sprintf("/%s-lastseen", site.Identifier), func(context *gin.Context) {
