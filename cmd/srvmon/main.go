@@ -27,10 +27,12 @@ type MonitorWebsite struct {
 	Proxy              string `json:"Proxy"`
 	Mode               string `json:"Mode"`
 
-	Result   bool        `json:"-"`
-	LastSeen time.Time   `json:"-"`
-	Logger   *log.Entry  `json:"-"`
-	Lock     *sync.Mutex `json:"-"`
+	Result             bool        `json:"-"`
+	ResultCount        int64       `json:"-"`
+	ResultSuccessCount int64       `json:"-"`
+	LastSeen           time.Time   `json:"-"`
+	Logger             *log.Entry  `json:"-"`
+	Lock               *sync.Mutex `json:"-"`
 }
 
 // Configuration describes monitor settings including websites, interval (seconds), and timeout (seconds)
@@ -118,6 +120,7 @@ func testTCP(site *MonitorWebsite, interval, timeout time.Duration) {
 			}
 
 			site.Result = true
+			site.ResultSuccessCount++
 			site.LastSeen = time.Now()
 		} else {
 			loggerWithError := site.Logger.WithFields(log.Fields{
@@ -132,6 +135,7 @@ func testTCP(site *MonitorWebsite, interval, timeout time.Duration) {
 			site.Result = false
 		}
 
+		site.ResultCount++
 		site.Lock.Unlock()
 		conn.Close()
 		time.Sleep(interval)
@@ -171,6 +175,7 @@ func testHTTP(site *MonitorWebsite, interval, timeout time.Duration) {
 			}
 
 			site.Result = true
+			site.ResultSuccessCount++
 			site.LastSeen = time.Now()
 		} else {
 			code := -1
@@ -191,6 +196,7 @@ func testHTTP(site *MonitorWebsite, interval, timeout time.Duration) {
 			site.Result = false
 		}
 
+		site.ResultCount++
 		site.Lock.Unlock()
 		time.Sleep(interval)
 	}
@@ -245,6 +251,25 @@ func main() {
 				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/last seen-%s-blue.svg", site.LastSeen.Format("2006--01--02 15:04:05")))
 			} else {
 				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/last seen-n/a-blue.svg")
+			}
+		})
+		r.GET(fmt.Sprintf("/%s-sla", site.Identifier), func(context *gin.Context) {
+			site.Lock.Lock()
+			defer site.Lock.Unlock()
+			if site.ResultCount != 0 {
+				var color string
+				sla := float64(site.ResultSuccessCount) / float64(site.ResultCount)
+				switch {
+				case sla > 0.9:
+					color = "green"
+				case sla > 0.6:
+					color = "yellow"
+				default:
+					color = "red"
+				}
+				context.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("https://img.shields.io/badge/sla-%.1f%%25-%s.svg", sla*100, color))
+			} else {
+				context.Redirect(http.StatusTemporaryRedirect, "https://img.shields.io/badge/sla-n/a-blue.svg")
 			}
 		})
 	}
