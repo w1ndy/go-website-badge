@@ -2,7 +2,9 @@
     "Websites": [
         {
             "URL": "https://bing.com",
-            "Identifier": "bing"
+            "Identifier": "bing",
+            "Timeout": 10,
+            "Interval": 10
         },
         {
             "URL": "https://expired.badssl.com",

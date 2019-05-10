@@ -19,6 +19,8 @@ type MonitorWebsite struct {
 	URL                string `json:"URL"`
 	Identifier         string `json:"Identifier"`
 	InsecureSkipVerify bool   `json:"InsecureSkipVerify"`
+	Timeout            int64  `json:"Timeout"`
+	Interval           int64  `json:"Interval"`
 
 	Result   bool        `json:"-"`
 	LastSeen time.Time   `json:"-"`
@@ -69,7 +71,14 @@ func init() {
 }
 
 func test(site *MonitorWebsite) {
-	timeout := time.Duration(time.Duration(config.Timeout) * time.Second)
+	var timeout time.Duration
+
+	if site.Timeout != 0 {
+		timeout = time.Duration(time.Duration(site.Timeout) * time.Second)
+	} else {
+		timeout = time.Duration(time.Duration(config.Timeout) * time.Second)
+	}
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: site.InsecureSkipVerify,
@@ -117,7 +126,12 @@ func test(site *MonitorWebsite) {
 		}
 
 		site.Lock.Unlock()
-		time.Sleep(time.Duration(config.Interval) * time.Second)
+
+		if site.Interval != 0 {
+			time.Sleep(time.Duration(site.Interval) * time.Second)
+		} else {
+			time.Sleep(time.Duration(config.Interval) * time.Second)
+		}
 	}
 }
 
