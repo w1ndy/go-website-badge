@@ -221,6 +221,7 @@ func testPassive(site *MonitorWebsite, timeout time.Duration) {
 			}
 			site.Result = true
 			site.ResultSuccessCount++
+			site.LastSeen = time.Now()
 		}
 		site.ResultCount++
 		site.Lock.Unlock()
