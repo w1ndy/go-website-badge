@@ -123,6 +123,7 @@ func testTCP(site *MonitorWebsite, interval, timeout time.Duration) {
 			site.Result = true
 			site.ResultSuccessCount++
 			site.LastSeen = time.Now()
+			conn.Close()
 		} else {
 			loggerWithError := site.Logger.WithFields(log.Fields{
 				"err": err,
@@ -138,7 +139,6 @@ func testTCP(site *MonitorWebsite, interval, timeout time.Duration) {
 
 		site.ResultCount++
 		site.Lock.Unlock()
-		conn.Close()
 		time.Sleep(interval)
 	}
 }
